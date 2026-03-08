@@ -1,0 +1,139 @@
+/* Additional custom styles for LAS QC Application */
+
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Loading animation */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Chart container responsive */
+.js-plotly-plot {
+    width: 100% !important;
+}
+
+/* Table improvements */
+table {
+    border-collapse: collapse;
+}
+
+th, td {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Focus styles */
+input:focus, select:focus, button:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: #3b82f6;
+}
+
+/* Button hover effects */
+button:active {
+    transform: scale(0.98);
+}
+
+/* Card shadow on hover */
+.hover-shadow:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Text truncation for long curve names */
+.truncate-curve {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Depth track styling */
+.depth-track {
+    background: linear-gradient(to bottom, #f8fafc 0%, #e2e8f0 100%);
+    border-right: 2px solid #cbd5e1;
+}
+
+/* Quality indicators */
+.quality-good {
+    color: #10b981;
+}
+
+.quality-warning {
+    color: #f59e0b;
+}
+
+.quality-critical {
+    color: #ef4444;
+}
+
+/* Plot track borders */
+.track-border {
+    border-left: 1px solid #e5e7eb;
+}
+
+.track-border:first-child {
+    border-left: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .tab-btn {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .metric-card {
+        padding: 1rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .tab-content {
+        display: block !important;
+    }
+}

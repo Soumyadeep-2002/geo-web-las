@@ -1,0 +1,8 @@
+flask>=2.3.0
+lasio>=0.30.0
+plotly>=5.15.0
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+werkzeug>=2.3.0
+gunicorn

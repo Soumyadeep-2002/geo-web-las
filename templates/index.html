@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAS File QC & Visualization</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .log-track { min-height: 600px; }
+        .curve-btn { transition: all 0.2s; }
+        .curve-btn:hover { transform: translateY(-2px); }
+        .qc-card { transition: all 0.3s; }
+        .qc-card:hover { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        .metric-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .success-gradient { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .warning-gradient { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .info-gradient { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-blue-600 text-white p-2 rounded-lg">
+                        <i class="fas fa-oil-well text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">LAS QC Pro</h1>
+                        <p class="text-sm text-gray-500">Well Log Quality Control & Interpretation</p>
+                    </div>
+                </div>
+                <div id="file-info" class="hidden flex items-center space-x-4">
+                    <span class="text-sm text-gray-600">
+                        <i class="fas fa-file-alt mr-1"></i>
+                        <span id="current-filename"></span>
+                    </span>
+                    <button onclick="clearFile()" class="text-red-500 hover:text-red-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <!-- Upload Section -->
+        <div id="upload-section" class="bg-white rounded-xl shadow-lg p-8 mb-6">
+            <div class="text-center mb-6">
+                <div class="bg-blue-50 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-cloud-upload-alt text-5xl text-blue-500"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Upload LAS File</h2>
+                <p class="text-gray-500">Upload your LAS file for quality control analysis and visualization</p>
+            </div>
+
+            <div class="border-2 border-dashed border-blue-300 rounded-xl p-8 text-center hover:border-blue-500 transition-colors cursor-pointer" id="drop-zone">
+                <input type="file" id="file-input" accept=".las" class="hidden">
+                <p class="text-lg text-gray-600 mb-2">Drag and drop your LAS file here</p>
+                <p class="text-sm text-gray-400">or click to browse</p>
+                <p class="text-xs text-gray-400 mt-2">Maximum file size: 50MB</p>
+            </div>
+
+            <div id="upload-progress" class="hidden mt-6">
+                <div class="flex items-center justify-center">
+                    <div class="loader mr-3"></div>
+                    <span class="text-gray-600">Processing LAS file...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content (hidden until file loaded) -->
+        <div id="main-content" class="hidden">
+            <!-- Navigation Tabs -->
+            <div class="bg-white rounded-t-xl shadow-sm border-b">
+                <div class="flex space-x-6 px-6">
+                    <button onclick="showTab('dashboard')" class="tab-btn tab-active py-4 px-2 font-medium text-sm flex items-center" data-tab="dashboard">
+                        <i class="fas fa-chart-pie mr-2"></i> Dashboard
+                    </button>
+                    <button onclick="showTab('qc-details')" class="tab-btn py-4 px-2 font-medium text-sm text-gray-600 flex items-center" data-tab="qc-details">
+                        <i class="fas fa-clipboard-check mr-2"></i> QC Details
+                    </button>
+                    <button onclick="showTab('log-viewer')" class="tab-btn py-4 px-2 font-medium text-sm text-gray-600 flex items-center" data-tab="log-viewer">
+                        <i class="fas fa-chart-bar mr-2"></i> Log Viewer
+                    </button>
+                    <button onclick="showTab('crossplots')" class="tab-btn py-4 px-2 font-medium text-sm text-gray-600 flex items-center" data-tab="crossplots">
+                        <i class="fas fa-project-diagram mr-2"></i> Crossplots
+                    </button>
+                    <button onclick="showTab('interpretation')" class="tab-btn py-4 px-2 font-medium text-sm text-gray-600 flex items-center" data-tab="interpretation">
+                        <i class="fas fa-microscope mr-2"></i> Interpretation
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div id="tab-dashboard" class="tab-content">
+                <!-- Well Info Cards -->
+                <div class="bg-white rounded-b-xl shadow-lg p-6 mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-info-circle mr-2 text-blue-500"></i>Well Information
+                    </h3>
+                    <div id="well-info-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- QC Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                    <div class="metric-card rounded-xl p-6 text-white">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm opacity-80">Quality Score</p>
+                                <p class="text-3xl font-bold" id="qc-score">-</p>
+                            </div>
+                            <i class="fas fa-star text-4xl opacity-50"></i>
+                        </div>
+                    </div>
+                    <div class="success-gradient rounded-xl p-6 text-white">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm opacity-80">Total Curves</p>
+                                <p class="text-3xl font-bold" id="total-curves">-</p>
+                            </div>
+                            <i class="fas fa-wave-square text-4xl opacity-50"></i>
+                        </div>
+                    </div>
+                    <div class="info-gradient rounded-xl p-6 text-white">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm opacity-80">Data Points</p>
+                                <p class="text-3xl font-bold" id="total-points">-</p>
+                            </div>
+                            <i class="fas fa-database text-4xl opacity-50"></i>
+                        </div>
+                    </div>
+                    <div class="warning-gradient rounded-xl p-6 text-white">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm opacity-80">Issues Found</p>
+                                <p class="text-3xl font-bold" id="issues-count">-</p>
+                            </div>
+                            <i class="fas fa-exclamation-triangle text-4xl opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Curves Summary -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-list-alt mr-2 text-blue-500"></i>Available Curves
+                    </h3>
+                    <div id="curves-summary" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- QC Details Tab -->
+            <div id="tab-qc-details" class="tab-content hidden">
+                <div class="bg-white rounded-b-xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Quality Control Details</h3>
+
+                    <!-- Data Gaps -->
+                    <div class="mb-6">
+                        <h4 class="font-medium text-gray-700 mb-2">Data Gaps</h4>
+                        <div id="qc-gaps" class="bg-gray-50 rounded-lg p-4">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Null Values -->
+                    <div class="mb-6">
+                        <h4 class="font-medium text-gray-700 mb-2">Null Values Analysis</h4>
+                        <div id="qc-nulls" class="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left">Curve</th>
+                                        <th class="px-4 py-2 text-right">Null Count</th>
+                                        <th class="px-4 py-2 text-right">Percentage</th>
+                                        <th class="px-4 py-2 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nulls-table-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Outliers -->
+                    <div class="mb-6">
+                        <h4 class="font-medium text-gray-700 mb-2">Outliers Detection</h4>
+                        <div id="qc-outliers" class="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left">Curve</th>
+                                        <th class="px-4 py-2 text-right">Outlier Count</th>
+                                        <th class="px-4 py-2 text-right">Percentage</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="outliers-table-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Statistics -->
+                    <div>
+                        <h4 class="font-medium text-gray-700 mb-2">Curve Statistics</h4>
+                        <div id="qc-stats" class="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left">Curve</th>
+                                        <th class="px-4 py-2 text-right">Min</th>
+                                        <th class="px-4 py-2 text-right">Max</th>
+                                        <th class="px-4 py-2 text-right">Mean</th>
+                                        <th class="px-4 py-2 text-right">Std Dev</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stats-table-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Viewer Tab -->
+            <div id="tab-log-viewer" class="tab-content hidden">
+                <div class="bg-white rounded-b-xl shadow-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">Log Viewer</h3>
+                        <div class="flex space-x-2">
+                            <button onclick="loadTripleCombo()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm">
+                                <i class="fas fa-layer-group mr-2"></i>Triple Combo
+                            </button>
+                            <button onclick="showCustomLogDialog()" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm">
+                                <i class="fas fa-plus mr-2"></i>Custom Track
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Depth Range Selector -->
+                    <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Depth Range</label>
+                        <div class="flex items-center space-x-4">
+                            <input type="number" id="depth-min" class="border rounded px-3 py-2 w-32" placeholder="Min">
+                            <span class="text-gray-500">to</span>
+                            <input type="number" id="depth-max" class="border rounded px-3 py-2 w-32" placeholder="Max">
+                            <button onclick="updateDepthRange()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                                Apply
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Log Plot Container -->
+                    <div id="log-plot-container" class="flex space-x-2 overflow-x-auto">
+                        <!-- Plotly charts will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crossplots Tab -->
+            <div id="tab-crossplots" class="tab-content hidden">
+                <div class="bg-white rounded-b-xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Crossplot Analysis</h3>
+
+                    <!-- Crossplot Controls -->
+                    <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">X-Axis</label>
+                                <select id="crossplot-x" class="w-full border rounded px-3 py-2">
+                                    <option value="">Select curve...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Y-Axis</label>
+                                <select id="crossplot-y" class="w-full border rounded px-3 py-2">
+                                    <option value="">Select curve...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Z-Axis (optional)</label>
+                                <select id="crossplot-z" class="w-full border rounded px-3 py-2">
+                                    <option value="">None</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button onclick="generateCrossplot()" class="w-full bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                                    <i class="fas fa-chart-scatter mr-2"></i>Generate
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Crossplot Container -->
+                    <div id="crossplot-container" class="border rounded-lg p-4 min-h-[500px]"></div>
+
+                    <!-- Common Crossplots -->
+                    <div class="mt-6">
+                        <h4 class="font-medium text-gray-700 mb-3">Quick Crossplots</h4>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="quickCrossplot('NPHI', 'RHOB')" class="bg-purple-100 text-purple-700 px-4 py-2 rounded-lg hover:bg-purple-200 text-sm">
+                                Neutron-Density
+                            </button>
+                            <button onclick="quickCrossplot('RT', 'GR')" class="bg-green-100 text-green-700 px-4 py-2 rounded-lg hover:bg-green-200 text-sm">
+                                RT-GR
+                            </button>
+                            <button onclick="quickCrossplot('DT', 'RHOB')" class="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg hover:bg-orange-200 text-sm">
+                                Sonic-Density
+                            </button>
+                            <button onclick="quickCrossplot('VSHALE', 'POROSITY_EST')" class="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200 text-sm">
+                Vsh-Phi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interpretation Tab -->
+            <div id="tab-interpretation" class="tab-content hidden">
+                <div class="bg-white rounded-b-xl shadow-lg p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Petrophysical Interpretation</h3>
+
+                    <!-- Interpretation Plot -->
+                    <div id="interpretation-plot" class="border rounded-lg p-4 min-h-[600px] mb-6"></div>
+
+                    <!-- Net to Gross Calculator -->
+                    <div class="bg-gray-50 rounded-lg p-6">
+                        <h4 class="font-medium text-gray-700 mb-4">Net to Gross Calculator</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Vshale Curve</label>
+                                <select id="ntg-vsh" class="w-full border rounded px-3 py-2"></select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Porosity Curve</label>
+                                <select id="ntg-phi" class="w-full border rounded px-3 py-2"></select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Vsh Cutoff</label>
+                                <input type="number" id="ntg-vsh-cutoff" value="0.3" step="0.05" max="1" min="0" class="w-full border rounded px-3 py-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Phi Cutoff</label>
+                                <input type="number" id="ntg-phi-cutoff" value="0.1" step="0.01" max="0.5" min="0" class="w-full border rounded px-3 py-2">
+                            </div>
+                        </div>
+                        <button onclick="calculateNetGross()" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600">
+                            Calculate Net to Gross
+                        </button>
+                        <div id="ntg-result" class="mt-4 hidden grid grid-cols-3 gap-4">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50"></div>
+
+    <script>
+        // Global state
+        let currentFileId = null;
+        let currentData = null;
+        let depthRange = { min: null, max: null };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupUploadHandlers();
+        });
+
+        // Upload handlers
+        function setupUploadHandlers() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-blue-500', 'bg-blue-50');
+            });
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+            });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+                if (e.dataTransfer.files.length > 0) {
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+        }
+
+        async function handleFile(file) {
+            if (!file.name.endsWith('.las')) {
+                showToast('Please upload a .las file', 'error');
+                return;
+            }
+
+            const progressDiv = document.getElementById('upload-progress');
+            const uploadSection = document.getElementById('upload-section');
+
+            progressDiv.classList.remove('hidden');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentFileId = data.file_id;
+                    currentData = data;
+
+                    document.getElementById('current-filename').textContent = data.filename;
+                    document.getElementById('file-info').classList.remove('hidden');
+
+                    uploadSection.classList.add('hidden');
+                    document.getElementById('main-content').classList.remove('hidden');
+
+                    populateDashboard(data);
+                    populateQCTab(data.qc_results);
+                    populateCurveSelects(data.available_curves);
+
+                    showToast('File uploaded successfully!', 'success');
+                } else {
+                    showToast(data.error || 'Upload failed', 'error');
+                }
+            } catch (error) {
+                showToast('Error uploading file: ' + error.message, 'error');
+            } finally {
+                progressDiv.classList.add('hidden');
+            }
+        }
+
+        function clearFile() {
+            currentFileId = null;
+            currentData = null;
+
+            document.getElementById('upload-section').classList.remove('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+            document.getElementById('file-info').classList.add('hidden');
+            document.getElementById('file-input').value = '';
+        }
+
+        // Tab navigation
+        function showTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.dataset.tab === tabName) {
+                    btn.classList.add('tab-active');
+                    btn.classList.remove('text-gray-600');
+                } else {
+                    btn.classList.remove('tab-active');
+                    btn.classList.add('text-gray-600');
+                }
+            });
+
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+
+            // Load specific tab data
+            if (tabName === 'log-viewer') {
+                loadTripleCombo();
+            } else if (tabName === 'interpretation') {
+                loadInterpretation();
+            }
+        }
+
+        // Populate dashboard
+        function populateDashboard(data) {
+            const wellInfo = data.well_info;
+            const qcResults = data.qc_results;
+            const curvesInfo = data.curves_info;
+
+            // Well info grid
+            const wellInfoGrid = document.getElementById('well-info-grid');
+            const wellInfoItems = [
+                { label: 'Well Name', value: wellInfo.well_name },
+                { label: 'Start Depth', value: wellInfo.start_depth },
+                { label: 'Stop Depth', value: wellInfo.stop_depth },
+                { label: 'Step', value: wellInfo.step },
+                { label: 'Company', value: wellInfo.company },
+                { label: 'Field', value: wellInfo.field },
+            ];
+
+            wellInfoGrid.innerHTML = wellInfoItems.map(item => `
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <p class="text-xs text-gray-500 mb-1">${item.label}</p>
+                    <p class="font-semibold text-gray-800">${item.value}</p>
+                </div>
+            `).join('');
+
+            // QC metrics
+            document.getElementById('qc-score').textContent = Math.round(qcResults.data_quality_score || 0) + '%';
+            document.getElementById('total-curves').textContent = qcResults.file_info?.total_curves || 0;
+            document.getElementById('total-points').textContent = qcResults.file_info?.total_points?.toLocaleString() || 0;
+
+            // Count issues
+            let issues = 0;
+            if (qcResults.data_gaps?.has_gaps) issues += qcResults.data_gaps.gap_count;
+            Object.values(qcResults.null_values || {}).forEach(v => {
+                if (v.status === 'critical') issues++;
+            });
+            document.getElementById('issues-count').textContent = issues;
+
+            // Curves summary
+            const curvesSummary = document.getElementById('curves-summary');
+            curvesSummary.innerHTML = Object.entries(curvesInfo).slice(0, 12).map(([name, info]) => {
+                const hasNulls = info.null_count > 0;
+                const statusColor = hasNulls ? 'text-yellow-500' : 'text-green-500';
+                return `
+                    <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-mono font-semibold text-gray-800">${name}</span>
+                            <span class="text-xs text-gray-500">${info.unit}</span>
+                        </div>
+                        <p class="text-xs text-gray-600 mb-2">${info.description}</p>
+                        <div class="flex items-center text-xs ${statusColor}">
+                            <i class="fas fa-${hasNulls ? 'exclamation-circle' : 'check-circle'} mr-1"></i>
+                            ${hasNulls ? `${info.null_count} nulls` : 'Complete'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Set depth range
+            if (qcResults.file_info?.depth_range) {
+                depthRange.min = qcResults.file_info.depth_range.min;
+                depthRange.max = qcResults.file_info.depth_range.max;
+                document.getElementById('depth-min').value = depthRange.min;
+                document.getElementById('depth-max').value = depthRange.max;
+            }
+        }
+
+        // Populate QC tab
+        function populateQCTab(qcResults) {
+            // Data gaps
+            const gapsDiv = document.getElementById('qc-gaps');
+            if (qcResults.data_gaps?.has_gaps) {
+                gapsDiv.innerHTML = `
+                    <div class="text-yellow-700">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        Found ${qcResults.data_gaps.gap_count} data gaps. Largest gap: ${qcResults.data_gaps.largest_gap.toFixed(2)}
+                    </div>
+                `;
+            } else {
+                gapsDiv.innerHTML = `
+                    <div class="text-green-700">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        No significant data gaps detected.
+                    </div>
+                `;
+            }
+
+            // Null values table
+            const nullsTbody = document.getElementById('nulls-table-body');
+            const nullValues = qcResults.null_values || {};
+            nullsTbody.innerHTML = Object.entries(nullValues).map(([curve, info]) => {
+                const statusColor = info.status === 'good' ? 'bg-green-100 text-green-800' :
+                                   info.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                                   'bg-red-100 text-red-800';
+                return `
+                    <tr class="border-b">
+                        <td class="px-4 py-2 font-mono">${curve}</td>
+                        <td class="px-4 py-2 text-right">${info.count.toLocaleString()}</td>
+                        <td class="px-4 py-2 text-right">${info.percent.toFixed(1)}%</td>
+                        <td class="px-4 py-2 text-center">
+                            <span class="px-2 py-1 rounded text-xs ${statusColor}">${info.status}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Outliers table
+            const outliersTbody = document.getElementById('outliers-table-body');
+            const outliers = qcResults.outliers || {};
+            outliersTbody.innerHTML = Object.entries(outliers).map(([curve, info]) => `
+                <tr class="border-b">
+                    <td class="px-4 py-2 font-mono">${curve}</td>
+                    <td class="px-4 py-2 text-right">${info.count.toLocaleString()}</td>
+                    <td class="px-4 py-2 text-right">${info.percent.toFixed(1)}%</td>
+                </tr>
+            `).join('');
+
+            // Statistics table
+            const statsTbody = document.getElementById('stats-table-body');
+            const statistics = qcResults.curve_statistics || {};
+            statsTbody.innerHTML = Object.entries(statistics).map(([curve, info]) => `
+                <tr class="border-b">
+                    <td class="px-4 py-2 font-mono">${curve}</td>
+                    <td class="px-4 py-2 text-right">${info.min.toFixed(3)}</td>
+                    <td class="px-4 py-2 text-right">${info.max.toFixed(3)}</td>
+                    <td class="px-4 py-2 text-right">${info.mean.toFixed(3)}</td>
+                    <td class="px-4 py-2 text-right">${info.std.toFixed(3)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Populate curve selects
+        function populateCurveSelects(curves) {
+            const selects = ['crossplot-x', 'crossplot-y', 'crossplot-z', 'ntg-vsh', 'ntg-phi'];
+            selects.forEach(id => {
+                const select = document.getElementById(id);
+                const currentValue = select.value;
+                select.innerHTML = id === 'crossplot-z' ?
+                    '<option value="">None</option>' :
+                    '<option value="">Select curve...</option>';
+
+                curves.forEach(curve => {
+                    if (!curve.toLowerCase().includes('depth') || id === 'crossplot-x' || id === 'crossplot-y') {
+                        const option = document.createElement('option');
+                        option.value = curve;
+                        option.textContent = curve;
+                        select.appendChild(option);
+                    }
+                });
+
+                if (currentValue) select.value = currentValue;
+            });
+        }
+
+        // Load triple combo plot
+        async function loadTripleCombo() {
+            if (!currentFileId) return;
+
+            try {
+                const response = await fetch(`/api/files/${currentFileId}/triple_combo`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderTripleCombo(data);
+                } else {
+                    showToast(data.error || 'Failed to load triple combo', 'error');
+                }
+            } catch (error) {
+                showToast('Error loading plot: ' + error.message, 'error');
+            }
+        }
+
+        function renderTripleCombo(data) {
+            const container = document.getElementById('log-plot-container');
+            container.innerHTML = '';
+
+            // Create depth track (first track, reversed scale)
+            const depthTrace = {
+                x: data.depth,
+                y: data.depth,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: 'black', width: 0.5 },
+                showlegend: false,
+                xaxis: 'x1',
+                yaxis: 'y1',
+            };
+
+            const traces = [depthTrace];
+            let xAxisCount = 2;
+
+            // Add each track
+            data.tracks.forEach((track, trackIndex) => {
+                if (track.curves.length === 0) return;
+
+                track.curves.forEach((curve, curveIndex) => {
+                    const trace = {
+                        x: curve.values,
+                        y: data.depth,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: curve.name,
+                        line: {
+                            width: 2,
+                            color: curveIndex === 0 ? '#3b82f6' : '#ef4444'
+                        },
+                        xaxis: `x${xAxisCount}`,
+                        yaxis: 'y1',
+                    };
+                    traces.push(trace);
+                    xAxisCount++;
+                });
+            });
+
+            // Layout
+            const layout = {
+                height: 700,
+                grid: {
+                    rows: 1,
+                    columns: xAxisCount - 1,
+                    pattern: 'independent',
+                },
+                yaxis: {
+                    title: `Depth (${data.depth_unit})`,
+                    autorange: 'reversed',
+                    showgrid: true,
+                    domain: [0, 1],
+                },
+                margin: { l: 60, r: 40, t: 50, b: 50 },
+                showlegend: true,
+                legend: { orientation: 'h', y: 1.1 },
+            };
+
+            // Add x-axes for each track
+            for (let i = 2; i <= xAxisCount; i++) {
+                layout[`xaxis${i}`] = {
+                    side: 'top',
+                    showgrid: true,
+                    domain: [(i-2)/(xAxisCount-1), (i-1)/(xAxisCount-1)],
+                };
+            }
+
+            const config = { responsive: true, displayModeBar: true };
+
+            const div = document.createElement('div');
+            div.style.width = '100%';
+            container.appendChild(div);
+
+            Plotly.newPlot(div, traces, layout, config);
+        }
+
+        // Generate crossplot
+        async function generateCrossplot() {
+            if (!currentFileId) return;
+
+            const xCurve = document.getElementById('crossplot-x').value;
+            const yCurve = document.getElementById('crossplot-y').value;
+            const zCurve = document.getElementById('crossplot-z').value;
+
+            if (!xCurve || !yCurve) {
+                showToast('Please select both X and Y curves', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/files/${currentFileId}/crossplot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ x_curve: xCurve, y_curve: yCurve, z_curve: zCurve })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderCrossplot(data);
+                } else {
+                    showToast(data.error || 'Failed to generate crossplot', 'error');
+                }
+            } catch (error) {
+                showToast('Error generating crossplot: ' + error.message, 'error');
+            }
+        }
+
+        function renderCrossplot(data) {
+            if (data.error) {
+                showToast(data.error, 'error');
+                return;
+            }
+
+            const traces = [{
+                x: data.x,
+                y: data.y,
+                mode: 'markers',
+                type: 'scatter',
+                marker: {
+                    size: 6,
+                    color: data.z || data.depth,
+                    colorscale: data.z ? 'Viridis' : 'Jet',
+                    showscale: true,
+                    colorbar: {
+                        title: data.z_name || 'Depth',
+                    }
+                },
+                text: data.depth.map((d, i) => `Depth: ${d.toFixed(2)}${data.z ? `<br>${data.z_name}: ${data.z[i].toFixed(3)}` : ''}`),
+                hovertemplate: `<b>${data.x_name}: %{x:.3f}</b><br>` +
+                              `<b>${data.y_name}: %{y:.3f}</b><br>` +
+                              `%{text}<extra></extra>`,
+            }];
+
+            const layout = {
+                height: 500,
+                xaxis: {
+                    title: `${data.x_name} ${data.x_unit ? '(' + data.x_unit + ')' : ''}`,
+                },
+                yaxis: {
+                    title: `${data.y_name} ${data.y_unit ? '(' + data.y_unit + ')' : ''}`,
+                },
+                margin: { l: 60, r: 60, t: 30, b: 60 },
+            };
+
+            Plotly.newPlot('crossplot-container', traces, layout, { responsive: true });
+        }
+
+        function quickCrossplot(x, y) {
+            // Check if curves exist
+            const xSelect = document.getElementById('crossplot-x');
+            const ySelect = document.getElementById('crossplot-y');
+
+            let xFound = false, yFound = false;
+            for (let option of xSelect.options) {
+                if (option.value.toUpperCase() === x || option.value.toUpperCase().includes(x)) {
+                    xSelect.value = option.value;
+                    xFound = true;
+                    break;
+                }
+            }
+            for (let option of ySelect.options) {
+                if (option.value.toUpperCase() === y || option.value.toUpperCase().includes(y)) {
+                    ySelect.value = option.value;
+                    yFound = true;
+                    break;
+                }
+            }
+
+            if (xFound && yFound) {
+                generateCrossplot();
+            } else {
+                showToast('Required curves not available in this LAS file', 'warning');
+            }
+        }
+
+        // Load interpretation
+        async function loadInterpretation() {
+            if (!currentFileId) return;
+
+            try {
+                const response = await fetch(`/api/files/${currentFileId}/interpretation`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderInterpretation(data);
+                } else {
+                    showToast(data.error || 'Failed to load interpretation', 'error');
+                }
+            } catch (error) {
+                showToast('Error loading interpretation: ' + error.message, 'error');
+            }
+        }
+
+        function renderInterpretation(data) {
+            const traces = [];
+
+            // Track 1: VSHALE
+            if (data.vshale.length > 0) {
+                traces.push({
+                    x: data.vshale,
+                    y: data.depth,
+                    name: 'Vshale',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#8B4513' },
+                    xaxis: 'x1',
+                    yaxis: 'y1',
+                });
+            }
+
+            // Track 2: POROSITY
+            if (data.porosity.length > 0) {
+                traces.push({
+                    x: data.porosity,
+                    y: data.depth,
+                    name: 'Porosity',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#4169E1' },
+                    xaxis: 'x2',
+                    yaxis: 'y1',
+                });
+            }
+
+            // Track 3: SW
+            if (data.sw.length > 0) {
+                traces.push({
+                    x: data.sw,
+                    y: data.depth,
+                    name: 'Sw',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#DC143C' },
+                    xaxis: 'x3',
+                    yaxis: 'y1',
+                });
+            }
+
+            const layout = {
+                height: 600,
+                grid: {
+                    rows: 1,
+                    columns: 3,
+                    pattern: 'independent',
+                },
+                yaxis: {
+                    title: `Depth (${data.depth_unit})`,
+                    autorange: 'reversed',
+                },
+                xaxis: { domain: [0, 0.3], title: 'Vshale', range: [0, 1] },
+                xaxis2: { domain: [0.35, 0.65], title: 'Porosity', range: [0, 0.5] },
+                xaxis3: { domain: [0.7, 1], title: 'Sw', range: [0, 1] },
+                margin: { l: 60, r: 40, t: 50, b: 50 },
+                showlegend: true,
+            };
+
+            Plotly.newPlot('interpretation-plot', traces, layout, { responsive: true });
+        }
+
+        // Net to Gross calculation
+        async function calculateNetGross() {
+            if (!currentFileId) return;
+
+            const vshCol = document.getElementById('ntg-vsh').value;
+            const phiCol = document.getElementById('ntg-phi').value;
+            const vshCutoff = parseFloat(document.getElementById('ntg-vsh-cutoff').value);
+            const phiCutoff = parseFloat(document.getElementById('ntg-phi-cutoff').value);
+
+            if (!vshCol || !phiCol) {
+                showToast('Please select Vshale and Porosity curves', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/files/${currentFileId}/net_gross`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        vshale_col: vshCol,
+                        porosity_col: phiCol,
+                        vsh_cutoff: vshCutoff,
+                        phi_cutoff: phiCutoff
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const resultDiv = document.getElementById('ntg-result');
+                    resultDiv.classList.remove('hidden');
+                    resultDiv.innerHTML = `
+                        <div class="bg-blue-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600">Gross Thickness</p>
+                            <p class="text-2xl font-bold text-blue-600">${data.gross_thickness} m</p>
+                        </div>
+                        <div class="bg-green-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600">Net Thickness</p>
+                            <p class="text-2xl font-bold text-green-600">${data.net_thickness} m</p>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600">Net/Gross</p>
+                            <p class="text-2xl font-bold text-purple-600">${(data.net_to_gross * 100).toFixed(1)}%</p>
+                        </div>
+                    `;
+                } else {
+                    showToast(data.error || 'Failed to calculate', 'error');
+                }
+            } catch (error) {
+                showToast('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-500'
+            };
+
+            toast.className = `${colors[type] || colors.info} text-white px-6 py-3 rounded-lg shadow-lg mb-3 flex items-center`;
+            toast.innerHTML = `
+                <span>${message}</span>
+                <button onclick="this.parentElement.remove()" class="ml-4 text-white hover:text-gray-200"><i class="fas fa-times"></i></button>
+            `;
+
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        function showCustomLogDialog() {
+            showToast('Custom log track feature coming soon!', 'info');
+        }
+
+        function updateDepthRange() {
+            const min = parseFloat(document.getElementById('depth-min').value);
+            const max = parseFloat(document.getElementById('depth-max').value);
+            if (min < max) {
+                depthRange = { min, max };
+                loadTripleCombo();
+            } else {
+                showToast('Invalid depth range', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
