@@ -9,7 +9,7 @@ import json
 import uuid
 import pandas as pd
 import numpy as np
-from las_qc import LASQCAnalyzer, CurveStandards, calculate_net_to_gross
+from las_qc import LASQCAnalyzer
 
 # Get the directory containing this file (for PythonAnywhere compatibility)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
