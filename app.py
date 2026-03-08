@@ -225,6 +225,60 @@ def get_histogram(file_id):
         'unit': analyzer.curves_info.get(curve, {}).get('unit', ''),
     })
 
+@app.route('/api/files/<file_id>/triple_combo', methods=['GET'])
+def get_triple_combo(file_id):
+
+    if file_id not in uploaded_files:
+        return jsonify({'error': 'File not found'}), 404
+
+    try:
+        analyzer = uploaded_files[file_id]['analyzer']
+        curves = analyzer.get_curve_aliases()
+
+        depth_col = analyzer.df.columns[0]
+
+        response_data = {
+            'depth': analyzer.df[depth_col].tolist(),
+            'depth_unit': analyzer.curves_info.get(depth_col, {}).get('unit', ''),
+            'tracks': []
+        }
+
+        tracks = []
+
+        if 'gamma_ray' in curves:
+            tracks.append({
+                "name": "Gamma Ray",
+                "curves": [{
+                    "name": curves['gamma_ray'],
+                    "values": analyzer.df[curves['gamma_ray']].tolist()
+                }]
+            })
+
+        if 'deep_resistivity' in curves:
+            tracks.append({
+                "name": "Resistivity",
+                "curves": [{
+                    "name": curves['deep_resistivity'],
+                    "values": analyzer.df[curves['deep_resistivity']].tolist()
+                }]
+            })
+
+        if 'density' in curves:
+            tracks.append({
+                "name": "Density",
+                "curves": [{
+                    "name": curves['density'],
+                    "values": analyzer.df[curves['density']].tolist()
+                }]
+            })
+
+        response_data["tracks"] = tracks
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.errorhandler(413)
 def too_large(e):
